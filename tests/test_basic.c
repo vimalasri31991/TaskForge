@@ -5,32 +5,46 @@
 #include "taskforge.h"
 
 
-/*
- * Task function:
- * Receives an integer and returns its square.
- */
-int square_task(void *argument)
+int priority_task(void *argument)
 {
     int value = *(int *)argument;
 
     printf(
-        "Worker processing %d\n",
+        "Worker processing task %d\n",
         value
     );
 
-    /*
-     * Sleep for 100 milliseconds.
-     * This is only for demonstration so
-     * concurrent worker execution is visible.
-     */
     struct timespec delay;
 
     delay.tv_sec = 0;
     delay.tv_nsec = 100000000L;
 
-    nanosleep(&delay, NULL);
+    nanosleep(
+        &delay,
+        NULL
+    );
 
-    return value * value;
+    return value * 10;
+}
+
+
+const char *priority_name(
+    TaskPriority priority)
+{
+    switch (priority)
+    {
+        case PRIORITY_HIGH:
+            return "HIGH";
+
+        case PRIORITY_MEDIUM:
+            return "MEDIUM";
+
+        case PRIORITY_LOW:
+            return "LOW";
+
+        default:
+            return "UNKNOWN";
+    }
 }
 
 
@@ -38,146 +52,218 @@ int main(void)
 {
     TaskForge pool;
 
-    printf("====================================\n");
-    printf("       TASKFORGE DEMONSTRATION      \n");
-    printf("====================================\n");
+
+    printf(
+        "====================================\n"
+    );
+
+    printf(
+        "       TASKFORGE MODULE 2 TEST      \n"
+    );
+
+    printf(
+        "     PRIORITY + FAIRNESS TEST       \n"
+    );
+
+    printf(
+        "====================================\n"
+    );
 
 
-    /*
-     * Initialize TaskForge.
-     *
-     * 4 worker threads
-     * Queue capacity = 4
-     */
-    printf("Creating thread pool...\n");
+    printf(
+        "Creating thread pool...\n"
+    );
 
-    if (taskforge_init(&pool, 4, 4) != 0)
+
+    if (
+        taskforge_init(
+            &pool,
+            2,
+            6
+        ) != 0
+    )
     {
-        printf("Failed to initialize TaskForge\n");
+        printf(
+            "Failed to initialize TaskForge\n"
+        );
+
         return 1;
     }
 
-    printf("Workers : 4\n");
-    printf("Queue   : 4\n");
 
-    printf("\nSubmitting tasks...\n");
+    printf(
+        "Workers : 2\n"
+    );
+
+    printf(
+        "Queue   : 6\n"
+    );
 
 
     /*
-     * Store futures for all submitted tasks.
+     * Ten tasks with different priorities.
      */
     Future *futures[10];
 
-    for (int i = 0; i < 10; i++)
+
+    TaskPriority priorities[10] =
     {
-        /*
-         * Allocate memory for the task argument.
-         */
-        int *value = malloc(sizeof(int));
+        PRIORITY_LOW,
+        PRIORITY_HIGH,
+        PRIORITY_HIGH,
+        PRIORITY_MEDIUM,
+        PRIORITY_HIGH,
+        PRIORITY_LOW,
+        PRIORITY_MEDIUM,
+        PRIORITY_HIGH,
+        PRIORITY_LOW,
+        PRIORITY_MEDIUM
+    };
+
+
+    printf(
+        "\nSubmitting priority tasks...\n\n"
+    );
+
+
+    for (
+        int i = 0;
+        i < 10;
+        i++
+    )
+    {
+        int *value =
+            malloc(sizeof(int));
+
 
         if (value == NULL)
         {
             printf(
-                "Memory allocation failed for task %d\n",
-                i + 1
+                "Memory allocation failed\n"
             );
 
-            /*
-             * Shutdown before exiting.
-             */
-            taskforge_shutdown(&pool);
+            taskforge_shutdown(
+                &pool
+            );
 
             return 1;
         }
 
+
         *value = i + 1;
 
 
-        /*
-         * Submit task to TaskForge.
-         */
         futures[i] =
             taskforge_submit(
                 &pool,
-                square_task,
-                value
+                priority_task,
+                value,
+                priorities[i]
             );
 
 
-        /*
-         * Check whether submission succeeded.
-         */
-        if (futures[i] == NULL)
+        if (
+            futures[i] == NULL
+        )
         {
             printf(
                 "Task %d submission failed\n",
                 i + 1
             );
 
-            /*
-             * The task was not accepted,
-             * so its argument must be freed here.
-             */
             free(value);
         }
         else
         {
             printf(
-                "Submitted task %d\n",
-                i + 1
+                "Submitted Task %d [%s]\n",
+                i + 1,
+                priority_name(
+                    priorities[i]
+                )
             );
         }
     }
 
 
-    /*
-     * Wait for all task results.
-     */
-    printf("\nWaiting for results...\n");
+    printf(
+        "\nWaiting for task results...\n\n"
+    );
 
-    for (int i = 0; i < 10; i++)
+
+    for (
+        int i = 0;
+        i < 10;
+        i++
+    )
     {
-        if (futures[i] != NULL)
+        if (
+            futures[i] != NULL
+        )
         {
-            /*
-             * future_get() blocks until the
-             * worker completes the task.
-             */
             int result =
-                future_get(futures[i]);
+                future_get(
+                    futures[i]
+                );
+
 
             printf(
-                "Task %d result = %d\n",
+                "Task %d [%s] Result = %d\n",
                 i + 1,
+                priority_name(
+                    priorities[i]
+                ),
                 result
             );
 
 
-            /*
-             * Future is no longer needed.
-             */
-            future_destroy(futures[i]);
+            future_destroy(
+                futures[i]
+            );
 
-            free(futures[i]);
+
+            free(
+                futures[i]
+            );
+
 
             futures[i] = NULL;
         }
     }
 
 
-    /*
-     * Graceful shutdown.
-     */
-    printf("\nInitiating graceful shutdown...\n");
+    printf(
+        "\nInitiating graceful shutdown...\n"
+    );
 
-    taskforge_shutdown(&pool);
 
-    printf("All workers joined.\n");
-    printf("TaskForge shutdown complete.\n");
+    taskforge_shutdown(
+        &pool
+    );
 
-    printf("\n====================================\n");
-    printf("        TEST COMPLETED SUCCESSFULLY \n");
-    printf("====================================\n");
+
+    printf(
+        "All workers joined.\n"
+    );
+
+
+    printf(
+        "TaskForge shutdown complete.\n"
+    );
+
+
+    printf(
+        "\n====================================\n"
+    );
+
+    printf(
+        "       MODULE 2 TEST PASSED        \n"
+    );
+
+    printf(
+        "====================================\n"
+    );
+
 
     return 0;
 }

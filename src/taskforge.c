@@ -1,83 +1,146 @@
 #include "taskforge.h"
 
 #include <stdlib.h>
-#include <stdio.h>
+
 
 static void *worker_function(void *argument)
 {
-    TaskForge *pool = (TaskForge *)argument;
+    TaskForge *pool =
+        (TaskForge *)argument;
+
 
     while (1)
     {
-        Task *task = (Task *)queue_pop(&pool->queue);
+        Task *task =
+            (Task *)queue_pop(
+                &pool->queue
+            );
 
+
+        /*
+         * NULL means queue is empty
+         * and shutdown has started.
+         */
         if (task == NULL)
         {
             break;
         }
 
-        int result = task->function(task->argument);
 
-        future_set(task->future, result);
+        /*
+         * Execute the task.
+         */
+        int result =
+            task->function(
+                task->argument
+            );
 
+
+        /*
+         * Store result in Future.
+         */
+        future_set(
+            task->future,
+            result
+        );
+
+
+        /*
+         * Worker owns task argument
+         * after successful submission.
+         */
         free(task->argument);
+
         free(task);
     }
 
+
     return NULL;
 }
+
 
 int taskforge_init(
     TaskForge *pool,
     size_t worker_count,
     size_t queue_capacity)
 {
-    if (pool == NULL ||
+    if (
+        pool == NULL ||
         worker_count == 0 ||
-        queue_capacity == 0)
+        queue_capacity == 0
+    )
     {
         return -1;
     }
 
-    pool->worker_count = worker_count;
+
+    pool->worker_count =
+        worker_count;
+
 
     /*
-     * Initialize shutdown state atomically.
      * 0 = running
      * 1 = shutting down
      */
-    atomic_init(&pool->shutting_down, 0);
+    atomic_init(
+        &pool->shutting_down,
+        0
+    );
 
-    if (queue_init(&pool->queue, queue_capacity) != 0)
+
+    if (
+        queue_init(
+            &pool->queue,
+            queue_capacity
+        ) != 0
+    )
     {
         return -1;
     }
 
+
     pool->workers =
-        malloc(sizeof(pthread_t) * worker_count);
+        malloc(
+            sizeof(pthread_t) *
+            worker_count
+        );
+
 
     if (pool->workers == NULL)
     {
-        queue_destroy(&pool->queue);
+        queue_destroy(
+            &pool->queue
+        );
+
         return -1;
     }
 
-    for (size_t i = 0; i < worker_count; i++)
+
+    for (
+        size_t i = 0;
+        i < worker_count;
+        i++
+    )
     {
-        if (pthread_create(
+        if (
+            pthread_create(
                 &pool->workers[i],
                 NULL,
                 worker_function,
-                pool) != 0)
+                pool
+            ) != 0
+        )
         {
-            /*
-             * If worker creation fails,
-             * shut down the queue and
-             * join already-created workers.
-             */
-            queue_shutdown(&pool->queue);
+            queue_shutdown(
+                &pool->queue
+            );
 
-            for (size_t j = 0; j < i; j++)
+
+            for (
+                size_t j = 0;
+                j < i;
+                j++
+            )
             {
                 pthread_join(
                     pool->workers[j],
@@ -85,43 +148,76 @@ int taskforge_init(
                 );
             }
 
+
             free(pool->workers);
-            queue_destroy(&pool->queue);
+
+            queue_destroy(
+                &pool->queue
+            );
 
             return -1;
         }
     }
 
+
     return 0;
 }
+
 
 Future *taskforge_submit(
     TaskForge *pool,
     TaskFunction function,
-    void *argument)
+    void *argument,
+    TaskPriority priority)
 {
-    if (pool == NULL || function == NULL)
+    if (
+        pool == NULL ||
+        function == NULL
+    )
     {
         return NULL;
     }
+
 
     /*
-     * Atomically check whether shutdown
-     * has already started.
+     * Reject submissions after shutdown.
      */
-    if (atomic_load(&pool->shutting_down))
+    if (
+        atomic_load(
+            &pool->shutting_down
+        )
+    )
     {
         return NULL;
     }
 
-    Task *task = malloc(sizeof(Task));
+
+    /*
+     * Validate priority.
+     */
+    if (
+        priority != PRIORITY_HIGH &&
+        priority != PRIORITY_MEDIUM &&
+        priority != PRIORITY_LOW
+    )
+    {
+        return NULL;
+    }
+
+
+    Task *task =
+        malloc(sizeof(Task));
+
 
     if (task == NULL)
     {
         return NULL;
     }
 
-    Future *future = malloc(sizeof(Future));
+
+    Future *future =
+        malloc(sizeof(Future));
+
 
     if (future == NULL)
     {
@@ -129,40 +225,64 @@ Future *taskforge_submit(
         return NULL;
     }
 
-    if (future_init(future) != 0)
+
+    if (
+        future_init(future) != 0
+    )
     {
         free(task);
         free(future);
+
         return NULL;
     }
 
+
     task->function = function;
+
     task->argument = argument;
+
     task->future = future;
 
-    if (queue_push(&pool->queue, task) != 0)
+    task->priority = priority;
+
+
+    /*
+     * Push task into the appropriate
+     * priority queue.
+     */
+    if (
+        queue_push(
+            &pool->queue,
+            task,
+            priority
+        ) != 0
+    )
     {
         future_destroy(future);
 
         free(future);
+
         free(task);
 
         return NULL;
     }
 
+
     return future;
 }
 
-void taskforge_shutdown(TaskForge *pool)
+
+void taskforge_shutdown(
+    TaskForge *pool)
 {
     if (pool == NULL)
     {
         return;
     }
 
+
     /*
-     * Atomically change the state from
-     * running to shutting down.
+     * Atomically start shutdown.
      */
     int already_shutting_down =
         atomic_exchange(
@@ -170,27 +290,30 @@ void taskforge_shutdown(TaskForge *pool)
             1
         );
 
-    /*
-     * If another thread already initiated
-     * shutdown, do not perform it again.
-     */
+
     if (already_shutting_down)
     {
         return;
     }
 
-    /*
-     * Stop accepting new queue operations
-     * and wake waiting producers/workers.
-     */
-    queue_shutdown(&pool->queue);
 
     /*
-     * Wait for every worker to finish.
+     * Stop accepting new work and wake
+     * blocked producers/workers.
      */
-    for (size_t i = 0;
-         i < pool->worker_count;
-         i++)
+    queue_shutdown(
+        &pool->queue
+    );
+
+
+    /*
+     * Wait for every worker.
+     */
+    for (
+        size_t i = 0;
+        i < pool->worker_count;
+        i++
+    )
     {
         pthread_join(
             pool->workers[i],
@@ -198,13 +321,12 @@ void taskforge_shutdown(TaskForge *pool)
         );
     }
 
-    /*
-     * Release worker-thread storage.
-     */
+
     free(pool->workers);
 
-    /*
-     * Destroy queue resources.
-     */
-    queue_destroy(&pool->queue);
+
+    queue_destroy(
+        &pool->queue
+    );
 }
+
