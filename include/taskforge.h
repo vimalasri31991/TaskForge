@@ -9,12 +9,15 @@
 #include "queue.h"
 #include "future.h"
 
+
 typedef int (*TaskFunction)(void *);
 
 typedef struct
 {
     TaskFunction function;
+
     void *argument;
+
     Future *future;
     TaskPriority priority;
 } Task;
@@ -22,6 +25,7 @@ typedef struct
 typedef struct
 {
     pthread_t *workers;
+
     size_t worker_count;
     TaskQueue queue;
 
@@ -32,12 +36,21 @@ typedef struct
     size_t active_submitters;
 } TaskForge;
 
+
+/*
+ * Initialize TaskForge.
+ */
 int taskforge_init(
     TaskForge *pool,
     size_t worker_count,
     size_t queue_capacity
 );
 
+
+/*
+ * Module 2:
+ * Submit task with priority.
+ */
 Future *taskforge_submit(
     TaskForge *pool,
     TaskFunction function,

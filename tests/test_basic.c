@@ -37,6 +37,7 @@ int main(void)
             goto cleanup;
         }
 
+
         *value = i + 1;
 
         futures[i] = taskforge_submit(
@@ -76,7 +77,6 @@ cleanup:
         (void)future_get(futures[i]);
     }
 
-    taskforge_shutdown(&pool);
 
     for (int i = 0; i < submitted; i++)
     {

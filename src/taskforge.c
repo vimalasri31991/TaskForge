@@ -39,6 +39,11 @@ static void *worker_function(void *argument)
     {
         Task *task = queue_pop(&pool->queue);
 
+
+        /*
+         * NULL means queue is empty
+         * and shutdown has started.
+         */
         if (task == NULL)
             break;
 
@@ -51,11 +56,14 @@ static void *worker_function(void *argument)
         }
 
         free(task->argument);
+
         free(task);
     }
 
+
     return NULL;
 }
+
 
 int taskforge_init(
     TaskForge *pool,
@@ -104,12 +112,15 @@ int taskforge_init(
                 &pool->workers[created],
                 NULL,
                 worker_function,
-                pool) != 0)
+                pool
+            ) != 0
+        )
         {
             queue_shutdown(&pool->queue);
 
             for (size_t j = 0; j < created; j++)
                 pthread_join(pool->workers[j], NULL);
+
 
             free(pool->workers);
             pool->workers = NULL;
@@ -121,6 +132,7 @@ int taskforge_init(
             return -1;
         }
     }
+
 
     return 0;
 }
@@ -143,7 +155,23 @@ static Future *submit_internal(
     if (submitter_started(pool) != 0)
         return NULL;
 
-    Task *task = malloc(sizeof(Task));
+
+    /*
+     * Validate priority.
+     */
+    if (
+        priority != PRIORITY_HIGH &&
+        priority != PRIORITY_MEDIUM &&
+        priority != PRIORITY_LOW
+    )
+    {
+        return NULL;
+    }
+
+
+    Task *task =
+        malloc(sizeof(Task));
+
 
     if (task == NULL)
     {
@@ -151,7 +179,10 @@ static Future *submit_internal(
         return NULL;
     }
 
-    Future *future = malloc(sizeof(Future));
+
+    Future *future =
+        malloc(sizeof(Future));
+
 
     if (future == NULL)
     {
@@ -160,7 +191,10 @@ static Future *submit_internal(
         return NULL;
     }
 
-    if (future_init(future) != 0)
+
+    if (
+        future_init(future) != 0
+    )
     {
         free(task);
         free(future);
@@ -168,8 +202,11 @@ static Future *submit_internal(
         return NULL;
     }
 
+
     task->function = function;
+
     task->argument = argument;
+
     task->future = future;
     task->priority = priority;
 
@@ -184,6 +221,7 @@ static Future *submit_internal(
     {
         future_destroy(future);
         free(future);
+
         free(task);
         submitter_finished(pool);
         return NULL;
@@ -329,3 +367,4 @@ void taskforge_shutdown(TaskForge *pool)
     pthread_cond_destroy(&pool->lifecycle_condition);
     pthread_mutex_destroy(&pool->lifecycle_mutex);
 }
+
