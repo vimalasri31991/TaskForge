@@ -172,43 +172,18 @@ int queue_push(
     while (queue->count >= queue->capacity &&
            !queue->shutdown)
     {
-        return;
+        pthread_cond_wait(&queue->not_full, &queue->mutex);
     }
 
-    free(queue->buffer_high);
-    free(queue->buffer_medium);
-    free(queue->buffer_low);
-
-    pthread_mutex_destroy(
-        &queue->mutex
-    );
-
-    pthread_cond_destroy(
-        &queue->not_empty
-    );
-
-    pthread_cond_destroy(
-        &queue->not_full
-    );
-}
-
-
-int queue_push(
-    TaskQueue *queue,
-    void *item,
-    TaskPriority priority)
-{
-    if (queue == NULL || item == NULL)
+    if (queue->shutdown)
     {
+        pthread_mutex_unlock(&queue->mutex);
         return -1;
     }
 
+    /* queue capacity and shutdown are still protected by the mutex. */
     enqueue_unlocked(queue, item, priority);
-
-    pthread_mutex_unlock(
-        &queue->mutex
-    );
-
+    pthread_mutex_unlock(&queue->mutex);
     return 0;
 }
 
@@ -333,13 +308,6 @@ void *queue_pop(TaskQueue *queue)
         return NULL;
 
     pthread_mutex_lock(&queue->mutex);
-
-void *queue_pop(
-    TaskQueue *queue)
-{
-    pthread_mutex_lock(
-        &queue->mutex
-    );
 
     /*
      * Worker waits while the queue is empty.
@@ -481,20 +449,6 @@ void queue_shutdown(TaskQueue *queue)
 {
     if (queue == NULL)
         return;
-
-    pthread_mutex_lock(&queue->mutex);
-
-void queue_shutdown(
-    TaskQueue *queue)
-{
-    if (queue == NULL)
-    {
-        return;
-    }
-
-    pthread_mutex_lock(
-        &queue->mutex
-    );
 
     /*
      * Mark queue as shutting down.

@@ -7,12 +7,14 @@ LDFLAGS = -pthread
 SRC = src/taskforge.c src/queue.c src/future.c
 
 MODULE1_TARGET = module1_demo
+MODULE5_TARGET = module5_demo
+MODULE6_TARGET = module6_demo
 MODULE3_TARGET = module3_demo
 MODULE4_TARGET = module4_demo
 
-.PHONY: all clean run module1 module3 module4 debug asan tsan
+.PHONY: all clean run module1 module3 module4 module5 module6 debug asan tsan
 
-all: module1 module3 module4
+all: module1 module3 module4 module5 module6
 
 $(MODULE1_TARGET): tests/test_basic.c $(SRC)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
@@ -23,16 +25,28 @@ $(MODULE3_TARGET): tests/test_cancellation.c $(SRC)
 $(MODULE4_TARGET): tests/test_backpressure.c $(SRC)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
 
+$(MODULE5_TARGET): tests/test_module5.c $(SRC)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(MODULE6_TARGET): tests/test_module6.c $(SRC)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
+
 module1: $(MODULE1_TARGET)
 
 module3: $(MODULE3_TARGET)
 
 module4: $(MODULE4_TARGET)
 
+module5: $(MODULE5_TARGET)
+
+module6: $(MODULE6_TARGET)
+
 run: all
 	./$(MODULE1_TARGET)
 	./$(MODULE3_TARGET)
 	./$(MODULE4_TARGET)
+	./$(MODULE5_TARGET)
+	./$(MODULE6_TARGET)
 
 debug: CFLAGS += -O0
 debug: clean all
@@ -46,4 +60,4 @@ tsan: LDFLAGS += -fsanitize=thread
 tsan: clean all
 
 clean:
-	rm -f $(MODULE1_TARGET) $(MODULE3_TARGET) $(MODULE4_TARGET)
+	rm -f $(MODULE1_TARGET) $(MODULE3_TARGET) $(MODULE4_TARGET) $(MODULE5_TARGET) $(MODULE6_TARGET)
